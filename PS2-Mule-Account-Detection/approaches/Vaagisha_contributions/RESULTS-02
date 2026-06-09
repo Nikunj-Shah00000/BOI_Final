@@ -1,192 +1,222 @@
-# Results and Analysis
+# v2_lightgbm_catboost_ensemble
 
-## Dataset Summary
+## Overview
 
-| Metric                           | Value   |
-| -------------------------------- | ------- |
-| Original Records                 | 9,082   |
-| Original Features                | 3,925   |
-| Final Features After Engineering | 4,696   |
-| Normal Accounts                  | 9,001   |
-| Mule Accounts                    | 81      |
-| Class Imbalance Ratio            | 111 : 1 |
+This version implements an ensemble-based mule account detection system by combining **LightGBM** and **CatBoost** models. The goal is to improve suspicious account detection performance while minimizing false positives.
 
-The dataset exhibited severe class imbalance, with suspicious mule accounts representing less than 1% of all records.
+Unlike the baseline LightGBM-only approach, this version leverages the strengths of two different gradient boosting algorithms and combines their predictions using a weighted ensemble strategy.
 
-To address this issue, class weighting was applied using:
+---
+
+# Problem Statement
+
+Detect suspicious mule accounts from banking data and assign a risk score to each account.
+
+Target Variable:
+
+* **F3924 = 0** → Normal Account
+* **F3924 = 1** → Suspicious/Mule Account
+
+---
+
+# Dataset Summary
+
+| Metric            | Value   |
+| ----------------- | ------- |
+| Records           | 9,082   |
+| Original Features | 3,925   |
+| Final Features    | 4,696   |
+| Normal Accounts   | 9,001   |
+| Mule Accounts     | 81      |
+| Imbalance Ratio   | 111 : 1 |
+
+The dataset is highly imbalanced, making accuracy an unsuitable evaluation metric.
+
+---
+
+# Methodology
+
+## Data Cleaning
+
+The following preprocessing steps were applied:
+
+* Removed index columns
+* Removed fully empty columns
+* Removed suspected leakage column (`F2230`)
+* Removed constant-value features
+
+---
+
+## Feature Engineering
+
+### Date Features
+
+Date columns were transformed into numerical age-based features.
+
+### Encoded Duration Features
+
+Fields such as:
+
+G365D
+
+were split into:
+
+* Type = G
+* Duration = 365
+
+### Missing Value Indicators
+
+Missing-value flags were created for partially missing features.
+
+Example:
+
+* F100_missing
+* F200_missing
+
+These indicators help capture patterns associated with incomplete account information.
+
+---
+
+# Class Imbalance Handling
+
+Since suspicious accounts are extremely rare, class imbalance was handled using:
 
 scale_pos_weight = 111.12
 
----
-
-# Cross Validation Results
-
-A 5-Fold Stratified Cross Validation strategy was used to preserve the original class distribution across all folds.
-
-## LightGBM Performance
-
-| Fold   | ROC-AUC | PR-AUC |
-| ------ | ------- | ------ |
-| Fold 1 | 1.0000  | 1.0000 |
-| Fold 2 | 0.9988  | 0.9562 |
-| Fold 3 | 1.0000  | 1.0000 |
-| Fold 4 | 1.0000  | 1.0000 |
-| Fold 5 | 1.0000  | 1.0000 |
+This forces the models to pay greater attention to the minority class.
 
 ---
 
-## CatBoost Performance
+# Models Used
 
-| Fold   | ROC-AUC | PR-AUC |
-| ------ | ------- | ------ |
-| Fold 1 | 1.0000  | 1.0000 |
-| Fold 2 | 0.9994  | 0.9653 |
-| Fold 3 | 0.9999  | 0.9963 |
-| Fold 4 | 1.0000  | 1.0000 |
-| Fold 5 | 0.9999  | 0.9963 |
+## LightGBM
 
-Both models demonstrated extremely strong discriminatory power across all folds.
+Advantages:
+
+* Handles large feature spaces efficiently
+* Supports missing values natively
+* Provides feature importance
+* Fast training and inference
 
 ---
 
-# Ensemble Optimization
+## CatBoost
 
-To combine the strengths of both models, a weighted ensemble strategy was employed.
+Advantages:
 
-The ensemble probability was calculated as:
+* Strong handling of categorical features
+* Robust to overfitting
+* Learns complex interactions automatically
+
+---
+
+# Ensemble Strategy
+
+Predictions from both models were combined using a weighted ensemble:
 
 Final Probability =
-(Weight × LightGBM Probability)
+(0.95 × LightGBM Probability)
 +
-((1 − Weight) × CatBoost Probability)
+(0.05 × CatBoost Probability)
 
-Multiple weights were evaluated and the optimal weight was determined automatically.
-
-### Optimal Ensemble Weight
-
-LightGBM Weight = 0.95
-
-CatBoost Weight = 0.05
-
-This indicates that LightGBM contributed most of the predictive power while CatBoost provided complementary improvements.
+The optimal weight was selected automatically by maximizing PR-AUC.
 
 ---
 
-# Model Comparison
+# Evaluation Strategy
 
-| Model    | ROC-AUC | PR-AUC |
-| -------- | ------- | ------ |
-| LightGBM | 0.9979  | 0.8221 |
-| CatBoost | 0.9849  | 0.9282 |
-| Ensemble | 0.9923  | 0.9448 |
+A 5-Fold Stratified Cross Validation strategy was used.
 
-The ensemble achieved the highest Precision-Recall AUC, making it the best-performing model for this highly imbalanced fraud-detection problem.
+Evaluation Metrics:
+
+* ROC-AUC
+* PR-AUC
+* Precision
+* Recall
+* F1-Score
+* Confusion Matrix
+
+Since the dataset is highly imbalanced, PR-AUC, Recall, and F1-score were prioritized over accuracy.
 
 ---
 
-# Threshold Optimization
+# Results
 
-Rather than using the default threshold of 0.50, thresholds from 0.01 to 0.99 were evaluated.
+## Model Comparison
 
-### Optimal Threshold
+| Metric                 | LightGBM Only | Ensemble   |
+| ---------------------- | ------------- | ---------- |
+| ROC-AUC                | 0.9992        | 0.9923     |
+| PR-AUC                 | 0.9351        | **0.9448** |
+| F1-Score               | 0.8989        | **0.9581** |
+| Mule Accounts Detected | 80 / 81       | 80 / 81    |
+| False Positives        | 17            | **6**      |
+
+---
+
+## Best Threshold
 
 0.06
 
-### Best F1 Score
+---
 
-0.9581
+## Classification Performance
 
-This threshold provided the best balance between fraud detection and false alert generation.
+| Metric    | Value  |
+| --------- | ------ |
+| Precision | 0.93   |
+| Recall    | 0.99   |
+| F1-Score  | 0.96   |
+| ROC-AUC   | 0.9923 |
+| PR-AUC    | 0.9448 |
 
 ---
 
-# Classification Performance
-
-## Precision
-
-0.93
-
-## Recall
-
-0.99
-
-## F1-Score
-
-0.96
-
-The model successfully detected:
-
-80 out of 81 mule accounts
-
-while missing only:
-
-1 mule account
-
-during cross-validation.
-
----
-
-# Confusion Matrix
+## Confusion Matrix
 
 | Actual / Predicted | Normal | Mule |
 | ------------------ | ------ | ---- |
 | Normal             | 8995   | 6    |
 | Mule               | 1      | 80   |
 
-### Interpretation
-
-* True Positives: 80
-* True Negatives: 8995
-* False Positives: 6
-* False Negatives: 1
-
-Only six legitimate accounts were incorrectly flagged as suspicious, while eighty mule accounts were successfully identified.
-
----
-
-# Feature Importance Analysis
-
-The most influential features identified by LightGBM were:
-
-1. F3912
-2. F3898
-3. F3914
-4. F3240
-5. F3348
-6. F3799
-7. F1165
-8. F2032
-9. F3597
-10. F1166
-
-Feature F3912 contributed significantly more predictive information than any other feature and emerged as the strongest indicator of suspicious account activity.
-
 ---
 
 # Key Achievements
 
-The final ensemble system achieved:
-
-* ROC-AUC: 0.9923
-* PR-AUC: 0.9448
-* Precision: 93%
-* Recall: 98.76%
-* F1-Score: 95.81%
-
-The model successfully detected nearly all suspicious mule accounts while maintaining an extremely low false positive rate.
+* Detected **80 out of 81** mule accounts.
+* Reduced false positives from **17 to 6** compared to the baseline model.
+* Improved F1-score from **89.89% to 95.81%**.
+* Improved PR-AUC from **0.9351 to 0.9448**.
+* Generated risk scores for every account.
 
 ---
 
-# Business Impact
+# Generated Outputs
 
-Instead of producing only binary classifications, the system generates a continuous Risk Score between 0 and 100.
+## optimized_mule_account_risk_scores.csv
 
-This enables financial institutions to:
+Contains:
 
-* Prioritize high-risk accounts.
-* Reduce manual investigation effort.
-* Detect suspicious activity earlier.
-* Improve fraud prevention workflows.
-* Support analyst decision-making through explainable risk rankings.
+* Actual Label
+* LightGBM Probability
+* CatBoost Probability
+* Ensemble Probability
+* Risk Score (0–100)
+* Predicted Label
 
-The resulting framework provides a practical and scalable AI-driven solution for mule account detection and financial fraud prevention.
+---
+
+## optimized_lgb_feature_importance.csv
+
+Contains:
+
+* Feature Names
+* Feature Importance Scores
+
+---
+
+# Conclusion
+
+The LightGBM + CatBoost Ensemble achieved the best overall performance among all tested approaches. The ensemble maintained near-perfect mule account detection while significantly reducing false alarms, making it the strongest candidate for deployment and final submission.
+
+This version is currently the best-performing model in the project.
