@@ -1,0 +1,284 @@
+# V1 - LightGBM Threshold Optimization with Leakage Validation
+
+## Approach: LightGBM-Based Mule Account Risk Scoring
+
+This approach builds a supervised machine learning pipeline to classify bank accounts as normal or suspicious mule accounts using the target column **F3924**. Since the dataset is highly imbalanced, with very few mule accounts compared to normal accounts, the model focuses on fraud-sensitive metrics such as **PR-AUC, recall, and F1-score** instead of accuracy.
+
+First, the dataset is loaded and the target distribution is analyzed. Basic cleaning is performed by removing index-like columns, fully empty columns, and a suspected leakage column. The target variable **F3924** is separated from the input features.
+
+Next, feature engineering is applied to improve model learning. Date-based columns are converted into numerical age features, and coded duration-like fields are split into separate numerical and categorical components. Columns with more than 95% missing values are removed, while missing-value indicators are created for moderately missing columns because missing information itself may be useful in fraud detection. Constant columns are also removed, and categorical columns are converted into category type for LightGBM.
+
+To handle class imbalance, `scale_pos_weight` is calculated as the ratio of normal accounts to mule accounts. This gives higher importance to the minority mule class during training, helping the model detect rare suspicious accounts.
+
+The model used is **LightGBM**, which is well-suited for high-dimensional tabular data with missing values and categorical features. A **5-fold Stratified Cross Validation** strategy is used so that each fold maintains a similar ratio of normal and mule accounts. The model is trained with early stopping to avoid overfitting.
+
+After training, the model generates out-of-fold probability predictions for each account. These probabilities represent the likelihood of an account being suspicious. Instead of using the default threshold of 0.5, multiple thresholds are tested, and the threshold with the best F1-score is selected.
+
+Finally, the model outputs a risk score from 0 to 100 by multiplying the predicted probability by 100. The final output file contains the actual label, predicted risk probability, risk score, and predicted label. Feature importance is also saved to identify which features contributed most to mule account detection.
+
+
+## Objective
+
+Develop a machine learning system capable of detecting mule accounts from highly imbalanced banking data while minimizing missed suspicious accounts.
+
+The primary goal was to maximize:
+
+* Recall
+* PR-AUC
+* F1 Score
+
+rather than overall accuracy.
+
+---
+
+## Dataset Overview
+
+| Metric            | Value   |
+| ----------------- | ------- |
+| Records           | 9,082   |
+| Original Features | 3,925   |
+| Final Features    | 4,696   |
+| Normal Accounts   | 9,001   |
+| Mule Accounts     | 81      |
+| Imbalance Ratio   | 111 : 1 |
+
+The dataset is extremely imbalanced, making accuracy an unreliable evaluation metric.
+
+---
+
+## Approach
+
+### Step 1: Data Cleaning
+
+The following preprocessing operations were performed:
+
+* Removed index columns (`Unnamed: 0`)
+* Removed suspected identifier column (`F2230`)
+* Removed completely empty columns
+* Removed constant-value columns
+
+This reduced noise and prevented the model from learning meaningless patterns.
+
+---
+
+### Step 2: Feature Engineering
+
+#### Date Transformation
+
+Column `F3888` was converted into:
+
+```text
+Days Since Most Recent Date
+```
+
+to capture temporal behavior.
+
+---
+
+#### Duration Feature Extraction
+
+Column `F3889` contained encoded duration values.
+
+Example:
+
+```text
+G365D
+```
+
+was converted into:
+
+```text
+Duration Type = G
+Duration Days = 365
+```
+
+This allowed the model to learn both categorical and numerical information.
+
+---
+
+#### Missing Value Indicators
+
+Missingness itself can be predictive in fraud problems.
+
+For columns having between 5% and 95% missing values:
+
+```text
+Feature_X_missing
+```
+
+indicator variables were created.
+
+---
+
+### Step 3: Handling Class Imbalance
+
+The dataset contained:
+
+```text
+9001 Normal Accounts
+81 Mule Accounts
+```
+
+To compensate for this imbalance:
+
+```python
+scale_pos_weight = 111.12
+```
+
+was used inside LightGBM.
+
+This penalizes misclassification of mule accounts more heavily.
+
+---
+
+### Step 4: Model Training
+
+Algorithm:
+
+* LightGBM
+* Gradient Boosted Decision Trees
+
+Validation Strategy:
+
+* 5-Fold Stratified Cross Validation
+
+Benefits:
+
+* Preserves class distribution
+* Produces reliable performance estimates
+* Reduces overfitting risk
+
+---
+
+### Step 5: Threshold Optimization
+
+Instead of using the default classification threshold:
+
+```text
+0.50
+```
+
+multiple thresholds were evaluated:
+
+```text
+0.10
+0.09
+0.08
+...
+0.001
+```
+
+This was done to understand the trade-off between:
+
+* Fraud Detection Rate
+* False Positives
+* Operational Investigation Cost
+
+---
+
+## Leakage Investigation
+
+Feature importance analysis showed:
+
+```text
+F3912
+```
+
+dominated all other features.
+
+A single-feature analysis produced:
+
+```text
+Single Feature ROC-AUC ≈ 0.987
+```
+
+which is extremely high.
+
+To verify whether this represented leakage:
+
+1. F3912 was removed.
+2. Model retrained.
+3. Performance compared.
+
+Results:
+
+| Scenario      | Recall |
+| ------------- | ------ |
+| With F3912    | 98.76% |
+| Without F3912 | 67.90% |
+
+Observation:
+
+The model performance degraded significantly after removing F3912.
+
+Therefore:
+
+* F3912 is highly informative.
+* No evidence of direct target leakage was found.
+* Feature was retained in the final model.
+
+---
+
+## Final Operating Modes
+
+### Balanced Detection Mode
+
+Threshold = 0.06
+
+Results:
+
+* 80 / 81 mule accounts detected
+* Recall = 98.76%
+* False Positives = 17
+* F1 Score = 0.8989
+
+Recommended for deployment.
+
+---
+
+### Maximum Security Mode
+
+Threshold = 0.01
+
+Results:
+
+* 81 / 81 mule accounts detected
+* Recall = 100%
+* False Positives = 281
+
+Recommended when missing a single mule account is unacceptable.
+
+---
+
+## Key Takeaways
+
+* Accuracy was intentionally not optimized.
+* Recall was prioritized due to fraud-detection requirements.
+* The model detected 98.76% of mule accounts in balanced mode.
+* 100% recall was achievable through threshold adjustment.
+* The system generates a risk score from 0–100 for prioritizing investigations.
+* F3912 emerged as the strongest predictive feature in the dataset.
+
+---
+
+## Generated Outputs
+
+### mule_account_risk_scores.csv
+
+Contains:
+
+* Actual Label
+* Risk Probability
+* Risk Score (0–100)
+* Predicted Label
+
+---
+
+### feature_importance.csv
+
+Contains:
+
+* Feature Names
+* Feature Importance Scores
+
+Used for explainability and model interpretation.
