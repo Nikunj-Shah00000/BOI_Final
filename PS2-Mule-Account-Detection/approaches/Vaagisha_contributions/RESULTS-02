@@ -1,0 +1,192 @@
+# Results and Analysis
+
+## Dataset Summary
+
+| Metric                           | Value   |
+| -------------------------------- | ------- |
+| Original Records                 | 9,082   |
+| Original Features                | 3,925   |
+| Final Features After Engineering | 4,696   |
+| Normal Accounts                  | 9,001   |
+| Mule Accounts                    | 81      |
+| Class Imbalance Ratio            | 111 : 1 |
+
+The dataset exhibited severe class imbalance, with suspicious mule accounts representing less than 1% of all records.
+
+To address this issue, class weighting was applied using:
+
+scale_pos_weight = 111.12
+
+---
+
+# Cross Validation Results
+
+A 5-Fold Stratified Cross Validation strategy was used to preserve the original class distribution across all folds.
+
+## LightGBM Performance
+
+| Fold   | ROC-AUC | PR-AUC |
+| ------ | ------- | ------ |
+| Fold 1 | 1.0000  | 1.0000 |
+| Fold 2 | 0.9988  | 0.9562 |
+| Fold 3 | 1.0000  | 1.0000 |
+| Fold 4 | 1.0000  | 1.0000 |
+| Fold 5 | 1.0000  | 1.0000 |
+
+---
+
+## CatBoost Performance
+
+| Fold   | ROC-AUC | PR-AUC |
+| ------ | ------- | ------ |
+| Fold 1 | 1.0000  | 1.0000 |
+| Fold 2 | 0.9994  | 0.9653 |
+| Fold 3 | 0.9999  | 0.9963 |
+| Fold 4 | 1.0000  | 1.0000 |
+| Fold 5 | 0.9999  | 0.9963 |
+
+Both models demonstrated extremely strong discriminatory power across all folds.
+
+---
+
+# Ensemble Optimization
+
+To combine the strengths of both models, a weighted ensemble strategy was employed.
+
+The ensemble probability was calculated as:
+
+Final Probability =
+(Weight × LightGBM Probability)
++
+((1 − Weight) × CatBoost Probability)
+
+Multiple weights were evaluated and the optimal weight was determined automatically.
+
+### Optimal Ensemble Weight
+
+LightGBM Weight = 0.95
+
+CatBoost Weight = 0.05
+
+This indicates that LightGBM contributed most of the predictive power while CatBoost provided complementary improvements.
+
+---
+
+# Model Comparison
+
+| Model    | ROC-AUC | PR-AUC |
+| -------- | ------- | ------ |
+| LightGBM | 0.9979  | 0.8221 |
+| CatBoost | 0.9849  | 0.9282 |
+| Ensemble | 0.9923  | 0.9448 |
+
+The ensemble achieved the highest Precision-Recall AUC, making it the best-performing model for this highly imbalanced fraud-detection problem.
+
+---
+
+# Threshold Optimization
+
+Rather than using the default threshold of 0.50, thresholds from 0.01 to 0.99 were evaluated.
+
+### Optimal Threshold
+
+0.06
+
+### Best F1 Score
+
+0.9581
+
+This threshold provided the best balance between fraud detection and false alert generation.
+
+---
+
+# Classification Performance
+
+## Precision
+
+0.93
+
+## Recall
+
+0.99
+
+## F1-Score
+
+0.96
+
+The model successfully detected:
+
+80 out of 81 mule accounts
+
+while missing only:
+
+1 mule account
+
+during cross-validation.
+
+---
+
+# Confusion Matrix
+
+| Actual / Predicted | Normal | Mule |
+| ------------------ | ------ | ---- |
+| Normal             | 8995   | 6    |
+| Mule               | 1      | 80   |
+
+### Interpretation
+
+* True Positives: 80
+* True Negatives: 8995
+* False Positives: 6
+* False Negatives: 1
+
+Only six legitimate accounts were incorrectly flagged as suspicious, while eighty mule accounts were successfully identified.
+
+---
+
+# Feature Importance Analysis
+
+The most influential features identified by LightGBM were:
+
+1. F3912
+2. F3898
+3. F3914
+4. F3240
+5. F3348
+6. F3799
+7. F1165
+8. F2032
+9. F3597
+10. F1166
+
+Feature F3912 contributed significantly more predictive information than any other feature and emerged as the strongest indicator of suspicious account activity.
+
+---
+
+# Key Achievements
+
+The final ensemble system achieved:
+
+* ROC-AUC: 0.9923
+* PR-AUC: 0.9448
+* Precision: 93%
+* Recall: 98.76%
+* F1-Score: 95.81%
+
+The model successfully detected nearly all suspicious mule accounts while maintaining an extremely low false positive rate.
+
+---
+
+# Business Impact
+
+Instead of producing only binary classifications, the system generates a continuous Risk Score between 0 and 100.
+
+This enables financial institutions to:
+
+* Prioritize high-risk accounts.
+* Reduce manual investigation effort.
+* Detect suspicious activity earlier.
+* Improve fraud prevention workflows.
+* Support analyst decision-making through explainable risk rankings.
+
+The resulting framework provides a practical and scalable AI-driven solution for mule account detection and financial fraud prevention.
