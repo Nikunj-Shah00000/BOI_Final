@@ -1,4 +1,4 @@
-# V1 - LightGBM Threshold Optimization with Leakage Validation
+# V1 - LightGBM  with Leakage Validation
 
 ## Approach: LightGBM-Based Mule Account Risk Scoring
 
